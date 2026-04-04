@@ -1,0 +1,15 @@
+[package]
+name = "node_binding"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+factorize_core = { path = "../factorize_core" }
+napi = { version = "2", features = ["full"] }
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"

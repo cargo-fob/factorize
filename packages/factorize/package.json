@@ -1,0 +1,17 @@
+{
+  "name": "factorize",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:binding": "cd ../../crates/node_binding && npm run build",
+    "start": "npx ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@factorize/binding": "file:../../crates/node_binding"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0"
+  }
+}
