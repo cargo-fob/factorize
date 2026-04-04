@@ -42,6 +42,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "factorize_cli"
+version = "0.1.0"
+dependencies = [
+ "factorize_core",
+ "task_loop",
+ "tokio",
+]
+
+[[package]]
 name = "factorize_core"
 version = "0.1.0"
 
