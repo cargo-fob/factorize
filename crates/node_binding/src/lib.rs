@@ -1,3 +1,5 @@
+mod native_watcher;
+
 use napi_derive::napi;
 
 #[napi]

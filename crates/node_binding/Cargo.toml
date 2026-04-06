@@ -8,8 +8,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 factorize_core = { path = "../factorize_core" }
-napi = { version = "2", features = ["full"] }
-napi-derive = "2"
+factorize_watcher = { path = "../factorize_watcher" }
+napi = { version = "3.8.4", default-features = false, features = ["async", "tokio_rt", "serde-json", "napi9", "compat-mode"] }
+napi-derive = { version = "3.5.3", default-features = false, features = ["compat-mode", "type-def"] }
 
 [build-dependencies]
-napi-build = "2"
+napi-build = "2.3.1"
