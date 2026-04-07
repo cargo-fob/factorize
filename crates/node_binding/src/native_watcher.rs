@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use factorize_watcher::{EventAggregateHandler, EventHandler, FsWatcher, FsWatcherOptions};
+use factorize_watcher::{
+    EventAggregateHandler, EventHandler, FsWatcher, FsWatcherIgnored, FsWatcherOptions,
+};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
@@ -8,6 +10,10 @@ use napi_derive::napi;
 #[napi(object, object_to_js = false)]
 pub struct JsWatcherOptions {
   pub aggregate_timeout: Option<u32>,
+  pub follow_symlinks: Option<bool>,
+  pub poll_interval: Option<u32>,
+  /// glob 패턴 목록 (e.g. ["node_modules", ".git"])
+  pub ignored: Option<Vec<String>>,
 }
 
 /// JS에 전달하는 집계 결과
@@ -29,9 +35,19 @@ pub struct NativeWatcher {
 impl NativeWatcher {
   #[napi(constructor)]
   pub fn new(options: JsWatcherOptions) -> Self {
-    let watcher = FsWatcher::new(FsWatcherOptions {
-      aggregate_timeout: options.aggregate_timeout,
-    });
+    let ignored = match options.ignored {
+      Some(paths) if !paths.is_empty() => FsWatcherIgnored::Paths(paths),
+      _ => FsWatcherIgnored::None,
+    };
+
+    let watcher = FsWatcher::new(
+      FsWatcherOptions {
+        aggregate_timeout: options.aggregate_timeout,
+        follow_symlinks: options.follow_symlinks.unwrap_or(false),
+        poll_interval: options.poll_interval,
+      },
+      ignored,
+    );
 
     Self {
       watcher,
