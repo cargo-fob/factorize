@@ -1,9 +1,13 @@
 mod disk_watcher;
 mod executor;
+pub mod ignored;
 
 use std::path::PathBuf;
+use std::sync::Arc;
+
 use disk_watcher::DiskWatcher;
 use executor::Executor;
+pub use ignored::FsWatcherIgnored;
 use tokio::sync::mpsc;
 
 /// 파일 시스템 이벤트 종류
@@ -39,11 +43,15 @@ pub trait EventHandler: Send {
 pub struct FsWatcherOptions {
     /// aggregate timeout (ms). 기본값 50ms
     pub aggregate_timeout: Option<u32>,
+    /// 심볼릭 링크를 따라갈지 여부
+    pub follow_symlinks: bool,
+    /// 폴링 간격 (ms). VM/NFS 환경에서 사용
+    pub poll_interval: Option<u32>,
 }
 
 /// 최소 단위 FsWatcher
-/// rspack의 FsWatcher에서 핵심만 추출:
-/// - DiskWatcher: notify crate 래핑
+/// rspack의 FsWatcher에서 핵심 추출 + Step 1 고도화:
+/// - DiskWatcher: notify crate 래핑 + ignored 필터링 + WatchPattern 관리
 /// - Executor: 이벤트 집계 + 핸들러 호출
 pub struct FsWatcher {
     disk_watcher: DiskWatcher,
@@ -51,10 +59,16 @@ pub struct FsWatcher {
 }
 
 impl FsWatcher {
-    pub fn new(options: FsWatcherOptions) -> Self {
+    pub fn new(options: FsWatcherOptions, ignored: FsWatcherIgnored) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
 
-        let disk_watcher = DiskWatcher::new(tx);
+        let ignored = Arc::new(ignored);
+        let disk_watcher = DiskWatcher::new(
+            options.follow_symlinks,
+            options.poll_interval,
+            ignored,
+            tx,
+        );
         let executor = Executor::new(rx, options.aggregate_timeout);
 
         Self {
@@ -70,7 +84,7 @@ impl FsWatcher {
         event_aggregate_handler: Box<dyn EventAggregateHandler>,
         event_handler: Box<dyn EventHandler>,
     ) -> Result<(), String> {
-        self.disk_watcher.watch(paths)?;
+        self.disk_watcher.watch_paths(paths)?;
         self.executor
             .wait_for_execute(event_aggregate_handler, event_handler)
             .await;
@@ -131,11 +145,14 @@ mod tests {
         let deleted = Arc::new(Mutex::new(Vec::new()));
         let events = Arc::new(Mutex::new(Vec::new()));
 
-        let mut watcher = FsWatcher::new(FsWatcherOptions {
-            aggregate_timeout: Some(100),
-        });
+        let mut watcher = FsWatcher::new(
+            FsWatcherOptions {
+                aggregate_timeout: Some(100),
+                ..Default::default()
+            },
+            FsWatcherIgnored::None,
+        );
 
-        // watch()는 executor를 spawn하고 바로 리턴
         watcher
             .watch(
                 vec![temp_dir.path().to_path_buf()],
@@ -150,13 +167,10 @@ mod tests {
             .await
             .unwrap();
 
-        // watcher가 OS에 등록될 시간
         sleep(Duration::from_millis(200)).await;
 
-        // 파일 수정
         std::fs::write(&file_path, "world").unwrap();
 
-        // aggregate timeout + 여유 시간
         sleep(Duration::from_millis(500)).await;
 
         let changed_files = changed.lock().unwrap();
@@ -166,6 +180,67 @@ mod tests {
             !changed_files.is_empty() || !individual_events.is_empty(),
             "Expected file change events, got none. changed={changed_files:?}, events={individual_events:?}"
         );
+
+        watcher.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_ignored_filters_events() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+
+        // node_modules 안에 파일 생성
+        let nm_dir = temp_dir.path().join("node_modules");
+        std::fs::create_dir_all(&nm_dir).unwrap();
+        let nm_file = nm_dir.join("lodash.js");
+        std::fs::write(&nm_file, "module.exports = {}").unwrap();
+
+        // src 안에 파일 생성
+        let src_dir = temp_dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        let src_file = src_dir.join("index.ts");
+        std::fs::write(&src_file, "console.log('hello')").unwrap();
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+
+        let mut watcher = FsWatcher::new(
+            FsWatcherOptions {
+                aggregate_timeout: Some(100),
+                ..Default::default()
+            },
+            FsWatcherIgnored::Path("node_modules".to_string()),
+        );
+
+        watcher
+            .watch(
+                vec![temp_dir.path().to_path_buf()],
+                Box::new(TestAggregateHandler {
+                    changed: Arc::new(Mutex::new(Vec::new())),
+                    deleted: Arc::new(Mutex::new(Vec::new())),
+                }),
+                Box::new(TestEventHandler {
+                    events: Arc::clone(&events),
+                }),
+            )
+            .await
+            .unwrap();
+
+        sleep(Duration::from_millis(200)).await;
+
+        // 두 파일 모두 수정
+        std::fs::write(&nm_file, "module.exports = { updated: true }").unwrap();
+        std::fs::write(&src_file, "console.log('world')").unwrap();
+
+        sleep(Duration::from_millis(500)).await;
+
+        let all_events = events.lock().unwrap();
+
+        // node_modules 이벤트는 없어야 함
+        let has_nm = all_events.iter().any(|e| e.contains("node_modules"));
+        assert!(!has_nm, "node_modules events should be filtered: {all_events:?}");
+
+        // src 이벤트는 있어야 함
+        let has_src = all_events.iter().any(|e| e.contains("src"));
+        assert!(has_src, "src events should be present: {all_events:?}");
 
         watcher.close().await;
     }
