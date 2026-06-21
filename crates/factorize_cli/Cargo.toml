@@ -10,4 +10,4 @@ path = "src/main.rs"
 [dependencies]
 factorize_core = { path = "../factorize_core" }
 task_loop = { path = "../task_loop" }
-tokio = { version = "1", features = ["full"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
