@@ -1,46 +1,22 @@
-import { Compiler } from "./Compiler";
-import { NativeWatchFileSystem } from "./NativeWatchFileSystem";
-import { sum } from "@factorize/binding";
 import * as path from "path";
+import { factorize } from "./factorize";
 
-console.log("sum(3, 4) =", sum(3, 4));
+async function main() {
+  const input = path.resolve(__dirname, "../fixture/entry.js");
 
-const compiler = new Compiler({
-  name: "factorize",
-  entry: "./src/index.ts",
-});
+  const build = factorize({ input }, [
+    {
+      moduleParsed: (id) => console.log("  [plugin] moduleParsed:", path.basename(id)),
+      // 모듈 맨 위에 배너 주입
+      transform: async (code, id) => `/* transformed: ${path.basename(id)} */\n${code}`,
+    },
+  ]);
 
-console.log("compiler.name:", compiler.name);
-console.log("compiler.entry:", compiler.entry);
-console.log("compiler.compile():", compiler.compile());
+  console.log("building:", input, "\n");
+  const out = await build.build();
 
-const watchDir = path.resolve(__dirname, "..");
+  console.log(`\nbuilt ${out.modules.length} modules → output:\n`);
+  console.log(out.code);
+}
 
-console.log(`\nWatching: ${watchDir}`);
-console.log("Try editing a file in that directory...\n");
-
-const watcher = new NativeWatchFileSystem({
-  aggregateTimeout: 200,
-});
-
-watcher.watch(
-  [watchDir],
-  (err, result) => {
-    if (err) {
-      console.error("Watch error:", err);
-      return;
-    }
-    console.log("[aggregate] changed:", result.changedFiles);
-    console.log("[aggregate] removed:", result.removedFiles);
-  },
-  (changedPath) => {
-    console.log("[immediate] changed:", changedPath);
-  }
-);
-
-// Ctrl+C로 종료 시 watcher 정리
-process.on("SIGINT", async () => {
-  console.log("\nClosing watcher...");
-  await watcher.close();
-  process.exit(0);
-});
+main();

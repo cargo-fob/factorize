@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build:binding": "cd ../../crates/node_binding && npm run build",
-    "start": "npx ts-node src/index.ts"
+    "start": "npx ts-node src/index.ts",
+    "watch": "npx ts-node src/watch-demo.ts"
   },
   "dependencies": {
     "@factorize/binding": "file:../../crates/node_binding"
