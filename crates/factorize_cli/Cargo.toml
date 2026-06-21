@@ -8,6 +8,6 @@ name = "factorize"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = { workspace = true }
 factorize_core = { path = "../factorize_core" }
-task_loop = { path = "../task_loop" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

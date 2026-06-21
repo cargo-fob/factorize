@@ -7,4 +7,15 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
+anyhow = { version = "1" }
+async-trait = { version = "0.1" }
+clap = { version = "4" }
+globset = { version = "0.4" }
+image = { version = "0.25" }
+napi = { version = "3.8.4", default-features = false }
+napi-build = { version = "2.3.1" }
+napi-derive = { version = "3.5.3", default-features = false }
+notify = { version = "8" }
+regex = { version = "1" }
+tempfile = { version = "3" }
 tokio = { version = "1", default-features = false }

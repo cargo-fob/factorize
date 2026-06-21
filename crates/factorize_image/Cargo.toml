@@ -11,8 +11,8 @@ name = "factorize-img"
 path = "src/main.rs"
 
 [dependencies]
-image = "0.25"
-anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+image = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
 factorize_watcher = { path = "../factorize_watcher" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }

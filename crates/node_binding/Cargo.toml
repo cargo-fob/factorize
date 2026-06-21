@@ -7,10 +7,12 @@ edition.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
 factorize_core = { path = "../factorize_core" }
 factorize_watcher = { path = "../factorize_watcher" }
-napi = { version = "3.8.4", default-features = false, features = ["async", "tokio_rt", "serde-json", "napi9", "compat-mode"] }
-napi-derive = { version = "3.5.3", default-features = false, features = ["compat-mode", "type-def"] }
+napi = { workspace = true, features = ["async", "tokio_rt", "serde-json", "napi9", "compat-mode"] }
+napi-derive = { workspace = true, features = ["compat-mode", "type-def"] }
 
 [build-dependencies]
-napi-build = "2.3.1"
+napi-build = { workspace = true }
