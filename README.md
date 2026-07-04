@@ -3,31 +3,98 @@
 rolldown식 구조의 학습용 번들러 — **thin JS/TS ↔ napi-rs ↔ Rust core**.
 파이프라인(scan → link → generate)을 Rust core가 소유하고, JS는 옵션과 plugin 콜백만 넘긴다.
 
-## 구조
+## 아키텍처
 
+```mermaid
+flowchart TD
+    subgraph JS["packages/factorize (TS)"]
+        A["factorize() / watch()<br/>thin facade — 옵션·plugin만 전달"]
+    end
+
+    subgraph Binding["crates/node_binding (napi-rs)"]
+        B["BindingBundler<br/>build / onModuleParsed / onTransform"]
+        C["BindingWatcher<br/>Rust-owned watch 루프"]
+    end
+
+    subgraph Core["crates/factorize_core (Rust)"]
+        D["Bundler: scan → link → generate"]
+        E["Plugin trait"]
+    end
+
+    W["crates/factorize_watcher<br/>FsWatcher (파일 감시)"]
+
+    A -- napi --> B
+    A -- napi --> C
+    B --> D
+    C --> W
+    D -.->|ThreadsafeFunction| E
+    E -.->|JS 콜백 호출| A
 ```
-packages/factorize (TS)        thin facade — factorize()/watch(), 옵션·plugin만 전달
-        │ napi
-crates/node_binding            BindingBundler(build, onModuleParsed, onTransform)
-                               BindingWatcher(Rust-owned watch 루프)
-        │
-crates/factorize_core          Bundler: scan → link → generate, Plugin trait
-crates/factorize_watcher       파일 감시 (FsWatcher)
+
+- plugin 훅(`moduleParsed`, `transform`)은 **Rust core가 napi `ThreadsafeFunction`으로 JS를 다시 호출**한다.
+- watch 루프는 **Rust가 소유**하고, JS는 이벤트만 구독한다.
+
+## 파이프라인
+
+```mermaid
+flowchart LR
+    entry(["entry.js"]) --> scan
+
+    subgraph scan["scan (worklist BFS)"]
+        s1["파일 읽기"] --> s2["transform 훅"]
+        s2 --> s3["상대 import 파싱 + resolve"]
+        s3 --> s4["moduleParsed 훅"]
+        s4 -->|deps 큐에 push| s1
+    end
+
+    scan -->|ModuleGraph| link
+    link["link<br/>실행 순서 결정 (deps-first)"] --> generate
+    generate["generate<br/>모듈 코드 이어붙이기"] --> out(["Output.code"])
 ```
 
-- **scan**: entry에서 상대 import를 따라가며 module graph 구성 (worklist)
-- **link**: 실행 순서 결정
-- **generate**: 모듈 코드 이어붙이기
-- plugin 훅(`moduleParsed`, `transform`)은 **Rust core가 napi ThreadsafeFunction으로 JS를 호출**
+| 단계 | 하는 일 |
+| --- | --- |
+| **scan** | entry에서 상대 import를 따라가며 module graph 구성 (worklist BFS) |
+| **link** | 실행 순서 결정 — deps가 먼저 오도록 정렬 |
+| **generate** | 모듈 코드를 순서대로 이어붙여 하나의 번들로 |
 
-## 사용
+## 실행
 
 ### CLI
+
 ```sh
-cargo run -p factorize_cli -- path/to/entry.js
+cargo run -p factorize_cli -- packages/factorize/fixture/entry.js
+```
+
+입력 (`fixture/entry.js` → `dep.js`, `meta/version.js` import):
+
+```js
+// entry.js
+import { hello } from "./dep.js";
+import { VERSION } from "./meta/version.js";
+console.log(hello(), VERSION);
+```
+
+실제 출력 — **의존성이 먼저(version → dep → entry) 배치**된 게 보인다:
+
+```js
+// === /.../fixture/meta/version.js ===
+export const VERSION = "0.1.0";
+
+// === /.../fixture/dep.js ===
+export function hello() {
+  return "hello from factorize";
+}
+
+// === /.../fixture/entry.js ===
+import { hello } from "./dep.js";
+import { VERSION } from "./meta/version.js";
+
+console.log(hello(), VERSION);
 ```
 
 ### JS API
+
 ```sh
 cd packages/factorize
 npm run build:binding   # Rust → .node 생성 (코드 바꿀 때마다)
@@ -57,3 +124,5 @@ w.on("change", (e) => console.log("changed:", e.path));
 
 번들러 핵심을 최소로 구현해 **rolldown의 JS↔napi↔Rust 경계 패턴**을 익히는 게 목표.
 실제 파서(oxc)·tree-shaking·code-splitting은 단순화돼 있다 — 자세한 전환 기록은 `ROLLDOWN_MIGRATION.md`.
+</content>
+</invoke>
